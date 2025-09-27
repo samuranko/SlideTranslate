@@ -1,106 +1,105 @@
 import React, { useState } from 'react';
-import { SlideData, DocxData, XlsxData, GlossaryTerm, FileType } from '../types';
-import { DownloadIcon, RefreshCwIcon, BookOpenIcon } from './icons';
+import { FileType, SlideData, DocxData, XlsxData, GlossaryTerm } from '../types';
 import { PptxPreview } from './PptxPreview';
 import { DocxPreview } from './DocxPreview';
 import { XlsxPreview } from './XlsxPreview';
+import { DownloadIcon, RefreshCwIcon, BookOpenIcon, AlertCircleIcon } from './icons';
 import { GlossaryModal } from './GlossaryModal';
-import { SUPPORTED_LANGUAGES } from '../constants';
 
 interface ResultsViewProps {
   fileType: FileType;
-  originalFile: File | null;
-  translatedData: SlideData[] | DocxData | XlsxData | null;
+  fileName: string;
+  pptxData: SlideData[] | null;
+  docxData: DocxData | null;
+  xlsxData: XlsxData | null;
+  glossary: GlossaryTerm[];
+  onUpdatePptx: (data: SlideData[]) => void;
+  onUpdateDocx: (data: DocxData) => void;
+  onUpdateXlsx: (data: XlsxData) => void;
   onDownload: () => void;
-  onRestart: () => void;
-  onTranslateAgain: (glossary: GlossaryTerm[]) => void;
-  downloadUrl: string | null;
-  isDownloading: boolean;
-  targetLanguage: string;
+  onReset: () => void;
+  onUpdateGlossary: (glossary: GlossaryTerm[]) => void;
 }
 
 export const ResultsView: React.FC<ResultsViewProps> = ({
   fileType,
-  translatedData,
+  fileName,
+  pptxData,
+  docxData,
+  xlsxData,
+  glossary,
+  onUpdatePptx,
+  onUpdateDocx,
+  onUpdateXlsx,
   onDownload,
-  onRestart,
-  onTranslateAgain,
-  downloadUrl,
-  isDownloading,
-  targetLanguage,
+  onReset,
+  onUpdateGlossary,
 }) => {
-  const [glossary, setGlossary] = useState<GlossaryTerm[]>([]);
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
 
-  const targetLanguageName = SUPPORTED_LANGUAGES.find(l => l.code === targetLanguage)?.name || 'Selected Language';
-
   const handleAddTerm = (term: GlossaryTerm) => {
-    setGlossary(prev => [...prev, term]);
+    onUpdateGlossary([...glossary, term]);
   };
 
   const handleDeleteTerm = (index: number) => {
-    setGlossary(prev => prev.filter((_, i) => i !== index));
+    onUpdateGlossary(glossary.filter((_, i) => i !== index));
   };
-  
-  const handleTranslateAgain = () => {
-    onTranslateAgain(glossary);
-  }
 
   const renderPreview = () => {
-    if (!translatedData) return null;
     switch (fileType) {
       case 'pptx':
-        return <PptxPreview slides={translatedData as SlideData[]} targetLanguageName={targetLanguageName} />;
+        return pptxData ? <PptxPreview slides={pptxData} onUpdate={onUpdatePptx} /> : <div className="text-center p-8">No PowerPoint data available.</div>;
       case 'docx':
-        return <DocxPreview data={translatedData as DocxData} targetLanguageName={targetLanguageName} />;
+        return docxData ? <DocxPreview data={docxData} onUpdate={onUpdateDocx} /> : <div className="text-center p-8">No Word document data available.</div>;
       case 'xlsx':
-        return <XlsxPreview data={translatedData as XlsxData} targetLanguageName={targetLanguageName} />;
+        return xlsxData ? <XlsxPreview data={xlsxData} onUpdate={onUpdateXlsx} /> : <div className="text-center p-8">No Excel data available.</div>;
       default:
-        return <p>Preview not available for this file type.</p>;
+        return (
+            <div className="text-center p-8 text-red-600 flex items-center justify-center gap-2">
+                <AlertCircleIcon className="w-6 h-6"/>
+                <p>Unsupported file type for preview.</p>
+            </div>
+        );
     }
   };
 
   return (
-    <div className="w-full p-4 md:p-8">
-      <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
-        <h2 className="text-3xl font-bold text-slate-800">Translation Results</h2>
-        <div className="flex items-center gap-2">
-           <button
+    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+        <div className="flex-1">
+          <h2 className="text-2xl font-bold text-slate-800">Translation Results</h2>
+          <p className="text-slate-600 truncate">File: <span className="font-medium">{fileName}</span></p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap justify-center">
+          <button
             onClick={() => setIsGlossaryOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 font-medium rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
           >
             <BookOpenIcon className="w-5 h-5" />
-            Glossary
+            Glossary ({glossary.length})
           </button>
           <button
-            onClick={handleTranslateAgain}
+            onClick={onReset}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 font-medium rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
           >
             <RefreshCwIcon className="w-5 h-5" />
-            Translate Again
+            New Translation
           </button>
           <button
             onClick={onDownload}
-            disabled={!translatedData || isDownloading}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
           >
             <DownloadIcon className="w-5 h-5" />
-            {isDownloading ? 'Preparing...' : 'Download'}
-          </button>
-          <button
-            onClick={onRestart}
-            className="px-4 py-2 bg-slate-600 text-white font-medium rounded-md shadow-sm hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors"
-          >
-            Start Over
+            Download
           </button>
         </div>
       </div>
-      
-      <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg border border-gray-200">
+
+      <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md border">
         {renderPreview()}
       </div>
 
-      <GlossaryModal 
+      <GlossaryModal
         isOpen={isGlossaryOpen}
         onClose={() => setIsGlossaryOpen(false)}
         glossary={glossary}

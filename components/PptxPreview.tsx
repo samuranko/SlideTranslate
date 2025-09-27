@@ -1,34 +1,45 @@
 import React, { useState } from 'react';
 import { SlideData } from '../types';
+import { EditableText } from './EditableText';
+import { LayersIcon } from './icons';
 
 interface PptxPreviewProps {
   slides: SlideData[];
-  targetLanguageName: string;
+  onUpdate: (updatedSlides: SlideData[]) => void;
 }
 
-export const PptxPreview: React.FC<PptxPreviewProps> = ({ slides, targetLanguageName }) => {
-  const [selectedSlide, setSelectedSlide] = useState(0);
+export const PptxPreview: React.FC<PptxPreviewProps> = ({ slides, onUpdate }) => {
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+
+  const handleTextChange = (textIndex: number, newText: string) => {
+    const updatedSlides = JSON.parse(JSON.stringify(slides));
+    updatedSlides[activeSlideIndex].texts[textIndex].translated = newText;
+    onUpdate(updatedSlides);
+  };
+
+  const handleNoteChange = (noteIndex: number, newText: string) => {
+    const updatedSlides = JSON.parse(JSON.stringify(slides));
+    updatedSlides[activeSlideIndex].notes[noteIndex].translated = newText;
+    onUpdate(updatedSlides);
+  };
 
   if (!slides || slides.length === 0) {
-    return <p>No content to display.</p>;
+    return <p className="text-center text-gray-500">No content to display.</p>;
   }
 
-  const currentSlide = slides[selectedSlide];
+  const currentSlide = slides[activeSlideIndex];
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 max-h-[70vh]">
-      {/* Slide Navigation */}
-      <div className="lg:w-1/5 flex-shrink-0 overflow-y-auto pr-2 border-r">
-        <h3 className="text-lg font-semibold mb-2 text-slate-700 sticky top-0 bg-white pb-2">Slides</h3>
-        <ul className="space-y-2">
+    <div className="flex flex-col md:flex-row gap-6 h-[70vh]">
+      <aside className="md:w-1/4 lg:w-1/5 overflow-y-auto border-r pr-3">
+        <h3 className="text-lg font-semibold mb-2 sticky top-0 bg-white z-10 p-2 border-b -ml-2">Slides</h3>
+        <ul className="space-y-1">
           {slides.map((slide, index) => (
             <li key={slide.slideNumber}>
               <button
-                onClick={() => setSelectedSlide(index)}
-                className={`w-full text-left px-3 py-2 rounded-md transition-colors text-sm font-medium ${
-                  selectedSlide === index
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'text-gray-600 hover:bg-gray-100'
+                onClick={() => setActiveSlideIndex(index)}
+                className={`w-full text-left p-2 rounded-md transition-colors text-sm ${
+                  activeSlideIndex === index ? 'bg-indigo-100 text-indigo-800 font-semibold' : 'hover:bg-gray-100'
                 }`}
               >
                 Slide {slide.slideNumber}
@@ -36,45 +47,74 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({ slides, targetLanguage
             </li>
           ))}
         </ul>
-      </div>
-
-      {/* Slide Content */}
-      <div className="lg:w-4/5 flex-grow overflow-y-auto">
-        <h3 className="text-xl font-bold mb-4 text-slate-800">
-          Slide {currentSlide.slideNumber} - Content
-        </h3>
-        <div className="space-y-4">
-          {currentSlide.texts.map((text, index) => (
-            <div key={index} className="p-4 border rounded-lg bg-gray-50">
-              <p className="text-sm font-medium text-gray-500 mb-1">Original</p>
-              <p className="text-gray-800">{text.original}</p>
-              <hr className="my-3" />
-              <p className="text-sm font-medium text-indigo-500 mb-1">Translated ({targetLanguageName})</p>
-              <p className="text-indigo-800 font-medium">{text.translated}</p>
-            </div>
-          ))}
-          {currentSlide.texts.length === 0 && <p className="text-gray-500">No text content on this slide.</p>}
-        </div>
-
-        {currentSlide.notes.length > 0 && (
-          <>
-            <h3 className="text-xl font-bold mt-8 mb-4 text-slate-800">
-              Slide {currentSlide.slideNumber} - Notes
-            </h3>
-            <div className="space-y-4">
-              {currentSlide.notes.map((note, index) => (
-                <div key={index} className="p-4 border rounded-lg bg-yellow-50">
-                  <p className="text-sm font-medium text-gray-500 mb-1">Original</p>
-                  <p className="text-gray-800">{note.original}</p>
-                  <hr className="my-3" />
-                  <p className="text-sm font-medium text-yellow-600 mb-1">Translated ({targetLanguageName})</p>
-                  <p className="text-yellow-800 font-medium">{note.translated}</p>
+      </aside>
+      
+      <main className="flex-1 overflow-y-auto">
+        {currentSlide ? (
+          <div>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><LayersIcon className="w-6 h-6" /> Slide {currentSlide.slideNumber} Content</h2>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2 border-b pb-1">Slide Text</h3>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-semibold text-gray-600 mb-1">Original</h4>
+                    <div className="space-y-2">
+                      {currentSlide.texts.map((text, i) => (
+                        <div key={i} className="p-2 bg-gray-100 rounded-md min-h-[2.5rem] whitespace-pre-wrap break-words">{text.original}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-600 mb-1">Translated (Editable)</h4>
+                    <div className="space-y-2">
+                      {currentSlide.texts.map((text, i) => (
+                        <EditableText
+                          key={i}
+                          initialValue={text.translated}
+                          onSave={(newValue) => handleTextChange(i, newValue)}
+                          textarea={text.original.includes('\n') || text.original.length > 80}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ))}
+              </div>
+
+              {currentSlide.notes.length > 0 && (
+                <div className="mt-8 pt-4 border-t">
+                  <h3 className="text-lg font-semibold mb-2 border-b pb-1">Slide Notes</h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-semibold text-gray-600 mb-1">Original</h4>
+                      <div className="space-y-2">
+                        {currentSlide.notes.map((note, i) => (
+                          <div key={i} className="p-2 bg-gray-100 rounded-md min-h-[2.5rem] whitespace-pre-wrap break-words">{note.original}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-600 mb-1">Translated (Editable)</h4>
+                      <div className="space-y-2">
+                        {currentSlide.notes.map((note, i) => (
+                          <EditableText
+                            key={i}
+                            initialValue={note.translated}
+                            onSave={(newValue) => handleNoteChange(i, newValue)}
+                            textarea
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </>
+          </div>
+        ) : (
+          <p className="text-center text-gray-500">Select a slide to view its content.</p>
         )}
-      </div>
+      </main>
     </div>
   );
 };

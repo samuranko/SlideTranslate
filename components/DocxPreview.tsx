@@ -1,29 +1,43 @@
 import React from 'react';
 import { DocxData } from '../types';
+import { EditableText } from './EditableText';
 
 interface DocxPreviewProps {
   data: DocxData;
-  targetLanguageName: string;
+  onUpdate: (updatedData: DocxData) => void;
 }
 
-export const DocxPreview: React.FC<DocxPreviewProps> = ({ data, targetLanguageName }) => {
-  if (!data || data.paragraphs.length === 0) {
-    return <p>No content to display.</p>;
-  }
+export const DocxPreview: React.FC<DocxPreviewProps> = ({ data, onUpdate }) => {
+  const handleTextChange = (index: number, newText: string) => {
+    const updatedParagraphs = [...data.paragraphs];
+    updatedParagraphs[index] = { ...updatedParagraphs[index], translated: newText };
+    onUpdate({ paragraphs: updatedParagraphs });
+  };
 
   return (
-    <div className="max-h-[70vh] overflow-y-auto pr-4">
-      <h3 className="text-xl font-bold mb-4 text-slate-800">Document Content</h3>
-      <div className="space-y-4">
-        {data.paragraphs.map((p, index) => (
-          <div key={index} className="p-4 border rounded-lg bg-gray-50">
-            <p className="text-sm font-medium text-gray-500 mb-1">Original</p>
-            <p className="text-gray-800">{p.original}</p>
-            <hr className="my-3" />
-            <p className="text-sm font-medium text-indigo-500 mb-1">Translated ({targetLanguageName})</p>
-            <p className="text-indigo-800 font-medium">{p.translated}</p>
-          </div>
+    <div className="h-[70vh] overflow-y-auto">
+      <div className="grid grid-cols-2 gap-x-6">
+        <h3 className="text-lg font-semibold mb-2 border-b pb-1 sticky top-0 bg-white z-10 p-2 -ml-2">Original Text</h3>
+        <h3 className="text-lg font-semibold mb-2 border-b pb-1 sticky top-0 bg-white z-10 p-2 -ml-2">Translated Text (Editable)</h3>
+      </div>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+        {data.paragraphs.map((pair, index) => (
+          <React.Fragment key={index}>
+            <div className="p-2 bg-gray-100 rounded-md min-h-[2.5rem] whitespace-pre-wrap break-words">
+              {pair.original}
+            </div>
+            <div>
+              <EditableText
+                initialValue={pair.translated}
+                onSave={(newValue) => handleTextChange(index, newValue)}
+                textarea={pair.original.includes('\n') || pair.original.length > 80}
+              />
+            </div>
+          </React.Fragment>
         ))}
+        {data.paragraphs.length === 0 && (
+          <p className="col-span-2 text-center text-gray-500 mt-4">No content to display.</p>
+        )}
       </div>
     </div>
   );

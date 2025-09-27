@@ -3,10 +3,12 @@ import { Header } from './components/Header';
 import { FileUpload } from './components/FileUpload';
 import { ProcessingView } from './components/ProcessingView';
 import { ResultsView } from './components/ResultsView';
-import { AlertCircleIcon } from './components/icons';
-import { AppState, SlideData, DocxData, XlsxData, GlossaryTerm, FileType } from './types';
+import { GlossaryModal } from './components/GlossaryModal';
+import { AlertCircleIcon, BookOpenIcon } from './components/icons';
+import { AppState, FileType, SlideData, DocxData, XlsxData, GlossaryTerm } from './types';
+import { SUPPORTED_LANGUAGES } from './constants';
 import { extractSlideData, reassemblePptx } from './services/pptxService';
-import { extractDocxData, createTranslatedDocxBlobUrl } from './services/docxService';
+import { extractDocxData, reassembleDocx } from './services/docxService';
 import { extractXlsxData, reassembleXlsx } from './services/xlsxService';
 import { translatePresentation, translateDocx, translateXlsx } from './services/geminiService';
 
@@ -14,185 +16,193 @@ const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('initial');
   const [file, setFile] = useState<File | null>(null);
   const [fileType, setFileType] = useState<FileType>(null);
-  const [targetLanguage, setTargetLanguage] = useState('es'); // Default to Spanish
-  const [extractedData, setExtractedData] = useState<SlideData[] | DocxData | XlsxData | null>(null);
-  const [translatedData, setTranslatedData] = useState<SlideData[] | DocxData | XlsxData | null>(null);
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [processingMessage, setProcessingMessage] = useState('');
+  const [targetLanguage, setTargetLanguage] = useState(SUPPORTED_LANGUAGES[1].code); // Default to Spanish
+  const [glossary, setGlossary] = useState<GlossaryTerm[]>([]);
+  const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+
+  const [pptxData, setPptxData] = useState<SlideData[] | null>(null);
+  const [docxData, setDocxData] = useState<DocxData | null>(null);
+  const [xlsxData, setXlsxData] = useState<XlsxData | null>(null);
 
   const resetState = () => {
     setAppState('initial');
     setFile(null);
     setFileType(null);
-    setExtractedData(null);
-    setTranslatedData(null);
-    setProcessingProgress(0);
-    setProcessingMessage('');
     setError(null);
-    setDownloadUrl(null);
-    setIsDownloading(false);
+    setProgress(0);
+    setProgressMessage('');
+    setPptxData(null);
+    setDocxData(null);
+    setXlsxData(null);
   };
 
-  const handleLanguageChange = (languageCode: string) => {
-    setTargetLanguage(languageCode);
-  };
-
-  const handleFileUpload = async (uploadedFile: File, type: FileType) => {
+  const handleFileUpload = useCallback(async (uploadedFile: File, type: FileType) => {
+    resetState();
     setFile(uploadedFile);
     setFileType(type);
     setAppState('processing');
-    setError(null);
-    setProcessingMessage('Extracting content from your file...');
-    setProcessingProgress(10);
 
     try {
-      let data;
-      if (type === 'pptx') {
-        data = await extractSlideData(uploadedFile);
-      } else if (type === 'docx') {
-        data = await extractDocxData(uploadedFile);
-      } else if (type === 'xlsx') {
-        data = await extractXlsxData(uploadedFile);
+      let extractedData: any;
+      setProgressMessage('Extracting text from your file...');
+      setProgress(10);
+      switch (type) {
+        case 'pptx':
+          extractedData = await extractSlideData(uploadedFile);
+          setPptxData(extractedData);
+          break;
+        case 'docx':
+          extractedData = await extractDocxData(uploadedFile);
+          setDocxData(extractedData);
+          break;
+        case 'xlsx':
+          extractedData = await extractXlsxData(uploadedFile);
+          setXlsxData(extractedData);
+          break;
+        default:
+          throw new Error('Unsupported file type for processing.');
       }
-      setExtractedData(data);
-      setProcessingMessage('Content extracted. Preparing for translation...');
-      setProcessingProgress(30);
-      await handleTranslate(data, type, [], targetLanguage); // Use selected language
-    } catch (e: any) {
-      setError(`Error processing file: ${e.message}`);
+      setProgress(30);
+
+      setProgressMessage('Translating content with Gemini AI...');
+      const onProgress = (p: number) => setProgress(30 + Math.round(p * 0.6));
+
+      let translatedData: any;
+      switch (type) {
+        case 'pptx':
+          translatedData = await translatePresentation(extractedData, targetLanguage, glossary, onProgress);
+          setPptxData(translatedData);
+          break;
+        case 'docx':
+          translatedData = await translateDocx(extractedData, targetLanguage, glossary, onProgress);
+          setDocxData(translatedData);
+          break;
+        case 'xlsx':
+          translatedData = await translateXlsx(extractedData, targetLanguage, glossary, onProgress);
+          setXlsxData(translatedData);
+          break;
+      }
+      
+      setProgress(100);
+      setProgressMessage('Translation complete!');
+      setAppState('results');
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An unknown error occurred during processing.');
       setAppState('error');
     }
-  };
-
-  const handleTranslate = async (dataToTranslate: any, type: FileType, glossary: GlossaryTerm[], language: string) => {
-      if (!dataToTranslate) {
-        setError('No content was extracted to translate.');
-        setAppState('error');
-        return;
-      }
-
-      setAppState('processing');
-      setProcessingMessage('Translating with Gemini AI...');
-      setProcessingProgress(40);
-      try {
-        let translated;
-        const onProgress = (progress: number) => setProcessingProgress(40 + (progress * 0.6)); // Scale 0-100 to 40-100
-
-        if (type === 'pptx') {
-          translated = await translatePresentation(dataToTranslate, language, glossary, onProgress);
-        } else if (type === 'docx') {
-          translated = await translateDocx(dataToTranslate, language, glossary, onProgress);
-        } else if (type === 'xlsx') {
-          translated = await translateXlsx(dataToTranslate, language, glossary, onProgress);
-        }
-
-        setTranslatedData(translated);
-        setAppState('results');
-      } catch (e: any) {
-        setError(`Translation failed: ${e.message}`);
-        setAppState('error');
-      }
-  };
+  }, [targetLanguage, glossary]);
 
   const handleDownload = async () => {
-    if (!file || !translatedData || !fileType) return;
-    
-    setIsDownloading(true);
-    
+    if (!file || !fileType) return;
     try {
-        let url;
-        if (fileType === 'pptx') {
-          url = await reassemblePptx(file, translatedData as SlideData[]);
-        } else if (fileType === 'docx') {
-          // Note: docx reassembly is simplified to a text file
-          url = createTranslatedDocxBlobUrl(translatedData as DocxData);
-        } else if (fileType === 'xlsx') {
-          url = reassembleXlsx(translatedData as XlsxData);
+        let downloadUrl = '';
+        if (fileType === 'pptx' && pptxData) {
+            downloadUrl = await reassemblePptx(file, pptxData);
+        } else if (fileType === 'docx' && docxData) {
+            downloadUrl = await reassembleDocx(file, docxData);
+        } else if (fileType === 'xlsx' && xlsxData) {
+            downloadUrl = reassembleXlsx(xlsxData);
         }
-        
-        if (url) {
-            setDownloadUrl(url);
-            // Trigger download
+
+        if (downloadUrl) {
             const a = document.createElement('a');
-            a.href = url;
+            a.href = downloadUrl;
             a.download = `translated_${file.name}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
         }
-    } catch (e: any) {
-        setError(`Failed to create downloadable file: ${e.message}`);
-    } finally {
-        setIsDownloading(false);
+    } catch(e) {
+        console.error("Failed to reassemble and download file:", e);
+        setError("Could not generate the downloadable file.");
+        setAppState('error');
     }
   };
 
-  const handleTranslateAgain = useCallback((glossary: GlossaryTerm[]) => {
-    if (extractedData && fileType) {
-        handleTranslate(extractedData, fileType, glossary, targetLanguage);
-    }
-  }, [extractedData, fileType, targetLanguage]);
+  const handleAddGlossaryTerm = (term: GlossaryTerm) => {
+    setGlossary([...glossary, term]);
+  };
+  
+  const handleDeleteGlossaryTerm = (index: number) => {
+    setGlossary(glossary.filter((_, i) => i !== index));
+  };
+
 
   const renderContent = () => {
     switch (appState) {
+      case 'initial':
+        return (
+            <FileUpload 
+                onFileUpload={handleFileUpload} 
+                disabled={false}
+                targetLanguage={targetLanguage}
+                onLanguageChange={setTargetLanguage}
+            />
+        );
       case 'processing':
-        return <ProcessingView progress={processingProgress} message={processingMessage} />;
+        return <ProcessingView progress={progress} message={progressMessage} />;
       case 'results':
         return (
           <ResultsView
             fileType={fileType}
-            originalFile={file}
-            translatedData={translatedData}
+            fileName={file?.name || 'file'}
+            pptxData={pptxData}
+            docxData={docxData}
+            xlsxData={xlsxData}
+            glossary={glossary}
+            onUpdatePptx={setPptxData}
+            onUpdateDocx={setDocxData}
+            onUpdateXlsx={setXlsxData}
             onDownload={handleDownload}
-            onRestart={resetState}
-            onTranslateAgain={handleTranslateAgain}
-            downloadUrl={downloadUrl}
-            isDownloading={isDownloading}
-            targetLanguage={targetLanguage}
+            onReset={resetState}
+            onUpdateGlossary={setGlossary}
           />
         );
       case 'error':
         return (
-          <div className="text-center p-8">
-            <AlertCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">An Error Occurred</h2>
-            <p className="text-red-600 bg-red-100 p-4 rounded-md">{error}</p>
-            <button onClick={resetState} className="mt-6 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
-              Try Again
-            </button>
-          </div>
+            <div className="text-center p-8">
+                <AlertCircleIcon className="w-16 h-16 mx-auto text-red-500 mb-4" />
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">An Error Occurred</h2>
+                <p className="text-red-600 bg-red-100 p-3 rounded-md max-w-lg mx-auto">{error}</p>
+                <button
+                    onClick={resetState}
+                    className="mt-6 px-6 py-2 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                >
+                    Try Again
+                </button>
+            </div>
         );
-      case 'initial':
       default:
-        return (
-          <div className="text-center p-8">
-            <h2 className="text-3xl font-bold text-slate-800 mb-2">Translate Your Documents Instantly</h2>
-            <p className="text-slate-600 mb-8 max-w-2xl mx-auto">Upload a PowerPoint, Word, or Excel file, and our AI will translate its content while preserving the layout.</p>
-            <FileUpload 
-              onFileUpload={handleFileUpload} 
-              disabled={appState !== 'initial'} 
-              targetLanguage={targetLanguage}
-              onLanguageChange={handleLanguageChange}
-            />
-          </div>
-        );
+        return null;
     }
   };
 
   return (
-    <div className="bg-slate-50 min-h-screen flex flex-col font-sans">
+    <div className="flex flex-col min-h-screen bg-slate-50 font-sans text-slate-900">
       <Header />
-      <main className="flex-grow container mx-auto px-4 py-8">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-          {renderContent()}
+      <main className="flex-grow container mx-auto p-4 flex flex-col items-center justify-center">
+        <div className="w-full bg-white rounded-lg shadow-xl p-6 md:p-8 my-8">
+            {renderContent()}
         </div>
       </main>
-      <footer className="text-center py-4 text-slate-500 text-sm">
-        Powered by Google Gemini
+      <footer className="text-center p-4 text-sm text-slate-500">
+        <button onClick={() => setIsGlossaryOpen(true)} className="flex items-center gap-2 mx-auto text-indigo-600 hover:text-indigo-800 font-medium">
+            <BookOpenIcon className="w-5 h-5"/> Manage Custom Glossary
+        </button>
+        <p className="mt-2">Powered by Google Gemini</p>
       </footer>
+      <GlossaryModal 
+        isOpen={isGlossaryOpen} 
+        onClose={() => setIsGlossaryOpen(false)}
+        glossary={glossary}
+        onAddTerm={handleAddGlossaryTerm}
+        onDeleteTerm={handleDeleteGlossaryTerm}
+      />
     </div>
   );
 };

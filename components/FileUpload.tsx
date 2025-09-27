@@ -66,7 +66,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, 
           value={targetLanguage}
           onChange={(e) => onLanguageChange(e.target.value)}
           disabled={disabled}
-          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm"
+          className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-slate-800 text-white border-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm rounded-md shadow-sm"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
             <option key={lang.code} value={lang.code}>

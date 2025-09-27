@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { Header } from './components/Header';
 import { FileUpload } from './components/FileUpload';
@@ -29,25 +28,41 @@ export default function App() {
   };
   
   const processPresentation = useCallback(async (selectedFile: File, language: Language) => {
+    let currentProcessingState: ProcessingState = 'parsing';
     try {
       setProcessingState('parsing');
       setProgress(10);
       setProgressMessage(`Parsing slides from ${selectedFile.name}...`);
       
       const extractedSlides = await extractSlideData(selectedFile);
+      
       if (extractedSlides.length === 0) {
-        throw new Error("No text found in the presentation, or the file is not a valid .pptx file.");
+        setError("No translatable text was found in the presentation. Please upload a file with text content.");
+        setProcessingState('error');
+        return;
       }
       
+      const totalTextElements = extractedSlides.reduce((acc, s) => acc + s.texts.length + s.notes.length, 0);
       setProgress(40);
-      setProgressMessage(`Translating ${extractedSlides.reduce((acc, s) => acc + s.texts.length, 0)} text elements to ${language.name}...`);
+      setProgressMessage(`Found ${totalTextElements} text elements. Starting translation to ${language.name}...`);
       setProcessingState('translating');
+      currentProcessingState = 'translating';
 
-      const translatedSlides = await translateAllText(extractedSlides, language.name);
+      const translationProgressCallback = (progressPercentage: number, message: string) => {
+        setProgress(progressPercentage);
+        setProgressMessage(message);
+      };
+
+      const translatedSlides = await translateAllText(
+        extractedSlides, 
+        language.name, 
+        translationProgressCallback
+      );
 
       setProgress(80);
       setProgressMessage('Reassembling translated presentation...');
       setProcessingState('reassembling');
+      currentProcessingState = 'reassembling';
       
       const url = await reassemblePptx(selectedFile, translatedSlides);
 
@@ -59,7 +74,13 @@ export default function App() {
     } catch (err) {
       console.error('Processing failed:', err);
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-      setError(`Processing failed: ${errorMessage}. Please check your API key and file, then try again.`);
+      
+      if (currentProcessingState === 'translating') {
+        setError(`Translation failed. Please check your API key and network connection. Details: ${errorMessage}`);
+      } else { // Error happened during 'parsing' or 'reassembling'
+        setError(`Processing failed: ${errorMessage}`);
+      }
+      
       setProcessingState('error');
     }
   }, []);

@@ -1,5 +1,5 @@
 {
-  "name": "SlideTranslate",
-  "description": "Upload a .pptx file to translate all text content into a target language. The application preserves original formatting, images, and charts, and provides the translated presentation for download.",
+  "name": "PowerTranslate AI",
+  "description": "Translate your documents (.pptx, .docx, .xlsx) instantly with AI while preserving the original layout and formatting.",
   "requestFramePermissions": []
 }

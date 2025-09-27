@@ -1,111 +1,98 @@
-
-import React, { useState, useCallback } from 'react';
-import { Language } from '../types';
-import { LANGUAGES } from '../constants';
-import { UploadCloudIcon, AlertCircleIcon } from './icons';
+import React, { useCallback, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { UploadCloudIcon } from './icons';
+import { SUPPORTED_FILE_TYPES, MAX_FILE_SIZE, SUPPORTED_LANGUAGES } from '../constants';
+import { FileType } from '../types';
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
-  targetLanguage: Language;
-  onLanguageChange: (langCode: string) => void;
-  error: string | null;
+  onFileUpload: (file: File, fileType: FileType) => void;
+  disabled: boolean;
+  targetLanguage: string;
+  onLanguageChange: (languageCode: string) => void;
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, targetLanguage, onLanguageChange, error }) => {
-  const [isDragging, setIsDragging] = useState(false);
+export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, targetLanguage, onLanguageChange }) => {
+  const [error, setError] = useState<string | null>(null);
 
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
+  const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
+    setError(null);
+    if (disabled) return;
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  
-  const handleFile = (file: File | null) => {
-    if (file && file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
-      onFileSelect(file);
-    } else {
-      alert('Please upload a valid .pptx file.');
+    if (fileRejections.length > 0) {
+      const firstRejection = fileRejections[0];
+      if (firstRejection.errors[0].code === 'file-too-large') {
+        setError(`File is too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`);
+      } else if (firstRejection.errors[0].code === 'file-invalid-type') {
+        setError('Invalid file type. Please upload a .pptx, .docx, or .xlsx file.');
+      } else {
+        setError(firstRejection.errors[0].message);
+      }
+      return;
     }
-  };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFile(e.dataTransfer.files[0]);
-      e.dataTransfer.clearData();
+    if (acceptedFiles.length > 0) {
+      const file = acceptedFiles[0];
+      const fileType = SUPPORTED_FILE_TYPES[file.type as keyof typeof SUPPORTED_FILE_TYPES] as FileType;
+      if (fileType) {
+        onFileUpload(file, fileType);
+      } else {
+        // This case should ideally be caught by accept property, but as a fallback.
+        setError('Unsupported file type.');
+      }
     }
-  };
-  
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFile(e.target.files[0]);
-    }
-  };
+  }, [onFileUpload, disabled]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+    },
+    maxSize: MAX_FILE_SIZE,
+    multiple: false,
+    disabled: disabled,
+  });
 
   return (
-    <div className="text-center">
-      <h2 className="text-2xl font-bold text-slate-900 mb-2">Translate Your Presentation</h2>
-      <p className="text-slate-600 mb-6">Upload a .pptx file, select a target language, and get a translated version in minutes.</p>
-      
+    <div className="w-full max-w-2xl mx-auto">
       <div className="mb-6">
-        <label htmlFor="language-select" className="block text-sm font-medium text-slate-700 mb-2">Target Language</label>
+        <label htmlFor="target-language" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+          Translate To
+        </label>
         <select
-          id="language-select"
-          value={targetLanguage.code}
+          id="target-language"
+          name="target-language"
+          value={targetLanguage}
           onChange={(e) => onLanguageChange(e.target.value)}
-          className="mt-1 block w-full max-w-xs mx-auto pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm"
+          disabled={disabled}
+          className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm"
         >
-          {LANGUAGES.map((lang) => (
-            <option key={lang.code} value={lang.code}>{lang.name}</option>
+          {SUPPORTED_LANGUAGES.map((lang) => (
+            <option key={lang.code} value={lang.code}>
+              {lang.name}
+            </option>
           ))}
         </select>
       </div>
-
       <div
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        className={`relative block w-full border-2 ${isDragging ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300'} border-dashed rounded-lg p-12 text-center hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200`}
+        {...getRootProps()}
+        className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-300
+          ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-300 hover:border-indigo-500 hover:bg-indigo-50'}
+          ${isDragActive ? 'border-indigo-600 bg-indigo-100' : ''}`}
       >
-        <input
-            id="file-upload"
-            name="file-upload"
-            type="file"
-            className="sr-only"
-            accept=".pptx"
-            onChange={handleFileChange}
-        />
-        <label htmlFor="file-upload" className="cursor-pointer">
-            <UploadCloudIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <span className="mt-2 block text-sm font-medium text-gray-900">
-                Drag & drop a file or click to upload
-            </span>
-            <span className="block text-xs text-gray-500">
-                .pptx files only
-            </span>
-        </label>
+        <input {...getInputProps()} />
+        <UploadCloudIcon className={`w-16 h-16 mb-4 ${isDragActive ? 'text-indigo-600' : 'text-gray-400'}`} />
+        {isDragActive ? (
+          <p className="text-lg font-semibold text-indigo-700">Drop the file here ...</p>
+        ) : (
+          <>
+            <p className="text-lg font-semibold text-gray-700">Drag & drop your file here, or click to select</p>
+            <p className="text-sm text-gray-500">Supported formats: .pptx, .docx, .xlsx (Max ${MAX_FILE_SIZE / 1024 / 1024}MB)</p>
+          </>
+        )}
       </div>
-
-      {error && (
-        <div className="mt-4 flex items-center justify-center bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded-md" role="alert">
-            <AlertCircleIcon className="w-5 h-5 mr-2" />
-            <span className="block sm:inline">{error}</span>
-        </div>
-      )}
+      {error && <p className="mt-2 text-sm text-red-600 text-center">{error}</p>}
     </div>
   );
 };
